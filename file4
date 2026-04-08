@@ -1,0 +1,910 @@
+Now let me create the main dashboard with all 7 simulation features. Due to the complexity, I'll create it in parts:
+Action: file_editor create /app/frontend/src/pages/DashboardPage.js --file-text "import React, { useState, useEffect, useRef } from \"react\";
+import { useAuth } from \"../contexts/AuthContext\";
+import { motion, AnimatePresence } from \"framer-motion\";
+import axios from \"axios\";
+import { 
+  Activity, Lock, Shield, Brain, Globe, MessageSquare, 
+  Play, Pause, AlertTriangle, LogOut, User, Network,
+  Zap, Eye, BarChart3, Map
+} from \"lucide-react\";
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from \"recharts\";
+import Marquee from \"react-fast-marquee\";
+import { ComposableMap, Geographies, Geography, Marker } from \"react-simple-maps\";
+
+const API = process.env.REACT_APP_BACKEND_URL;
+
+const geoUrl = \"https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json\";
+
+export default function DashboardPage() {
+  const { user, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState(\"network\");
+  const [isTraining, setIsTraining] = useState(false);
+  const [trainingRound, setTrainingRound] = useState(0);
+  const [accuracy, setAccuracy] = useState(0);
+  const [privacyLevel, setPrivacyLevel] = useState(50);
+  const [attackActive, setAttackActive] = useState(false);
+  const [privacyEnabled, setPrivacyEnabled] = useState(true);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState(\"\");
+  const [trainingData, setTrainingData] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const chatEndRef = useRef(null);
+
+  // Hospital nodes for network visualization
+  const hospitals = [
+    { id: 1, name: \"Hospital A\", x: 200, y: 150, country: \"US\", law: \"HIPAA\" },
+    { id: 2, name: \"Hospital B\", x: 600, y: 200, country: \"UK\", law: \"GDPR\" },
+    { id: 3, name: \"Hospital C\", x: 400, y: 400, country: \"India\", law: \"PDPB\" },
+    { id: 4, name: \"Hospital D\", x: 150, y: 350, country: \"Brazil\", law: \"LGPD\" },
+  ];
+
+  const worldMarkers = [
+    { name: \"Hospital A\", coordinates: [-98, 38], law: \"HIPAA\" },
+    { name: \"Hospital B\", coordinates: [-3, 54], law: \"GDPR\" },
+    { name: \"Hospital C\", coordinates: [77, 20], law: \"PDPB\" },
+    { name: \"Hospital D\", coordinates: [-47, -15], law: \"LGPD\" },
+  ];
+
+  // Start training simulation
+  const startTraining = async () => {
+    setIsTraining(true);
+    setTrainingRound(0);
+    setAccuracy(45);
+    setTrainingData([{ round: 0, accuracy: 45 }]);
+    
+    try {
+      await axios.post(`${API}/api/simulation/start`, {}, { withCredentials: true });
+      addAuditLog(\"Training initiated - Federated learning protocol activated\");
+      
+      // Simulate training rounds
+      for (let i = 1; i <= 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const newAccuracy = 45 + (i * 5) + Math.random() * 2;
+        setTrainingRound(i);
+        setAccuracy(newAccuracy);
+        setTrainingData(prev => [...prev, { round: i, accuracy: newAccuracy }]);
+        addAuditLog(`Round ${i} complete - Accuracy: ${newAccuracy.toFixed(1)}% - Zero data shared 🔒`);
+      }
+      
+      setIsTraining(false);
+      addAuditLog(\"Training complete - Model updated successfully\");
+    } catch (error) {
+      console.error(\"Training error:\", error);
+      setIsTraining(false);
+    }
+  };
+
+  const addAuditLog = (message) => {
+    setAuditLogs(prev => [{
+      id: Date.now(),
+      message,
+      timestamp: new Date().toLocaleTimeString()
+    }, ...prev].slice(0, 20));
+  };
+
+  // Privacy metrics calculation
+  const getPrivacyMetrics = () => {
+    const epsilon = privacyLevel;
+    return {
+      accuracy: Math.max(50, 95 - (100 - epsilon) * 0.3),
+      privacy: epsilon,
+      leakage: Math.max(0, 100 - epsilon),
+      compliance: Math.min(100, epsilon + 20)
+    };
+  };
+
+  const metrics = getPrivacyMetrics();
+
+  // Attack simulation data
+  const getAttackData = () => {
+    if (privacyEnabled) {
+      return [
+        { feature: \"Age\", reconstruction: 8 },
+        { feature: \"BMI\", reconstruction: 11 },
+        { feature: \"Glucose\", reconstruction: 7 },
+        { feature: \"BP\", reconstruction: 9 },
+        { feature: \"Cholesterol\", reconstruction: 10 },
+      ];
+    } else {
+      return [
+        { feature: \"Age\", reconstruction: 92 },
+        { feature: \"BMI\", reconstruction: 88 },
+        { feature: \"Glucose\", reconstruction: 95 },
+        { feature: \"BP\", reconstruction: 91 },
+        { feature: \"Cholesterol\", reconstruction: 89 },
+      ];
+    }
+  };
+
+  // Send chat message
+  const sendChatMessage = async () => {
+    if (!chatInput.trim()) return;
+    
+    const userMsg = { role: \"user\", content: chatInput };
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput(\"\");
+    
+    try {
+      const { data } = await axios.post(
+        `${API}/api/chat`,
+        { message: chatInput },
+        { withCredentials: true }
+      );
+      
+      setChatMessages(prev => [...prev, { role: \"assistant\", content: data.response }]);
+    } catch (error) {
+      console.error(\"Chat error:\", error);
+      setChatMessages(prev => [...prev, { 
+        role: \"assistant\", 
+        content: \"Error: Unable to connect to AI assistant.\" 
+      }]);
+    }
+  };
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: \"smooth\" });
+  }, [chatMessages]);
+
+  // Auto-narrate training events
+  useEffect(() => {
+    if (auditLogs.length > 0 && isTraining) {
+      const latestLog = auditLogs[0];
+      setChatMessages(prev => [...prev, { 
+        role: \"system\", 
+        content: `🔔 ${latestLog.message}` 
+      }]);
+    }
+  }, [auditLogs]);
+
+  return (
+    <div className=\"min-h-screen bg-[#050505] text-white relative overflow-hidden\" style={{ fontFamily: 'IBM Plex Mono, monospace' }}>
+      {/* Grid background */}
+      <div className=\"fixed inset-0 opacity-10\"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(0, 245, 255, 0.2) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 245, 255, 0.2) 1px, transparent 1px)
+          `,
+          backgroundSize: \"40px 40px\"
+        }}
+      />
+
+      {/* Header */}
+      <div className=\"relative z-10 border-b border-cyan-400/20 bg-black/40 backdrop-blur-md\">
+        <div className=\"max-w-7xl mx-auto px-6 py-4 flex items-center justify-between\">
+          <div className=\"flex items-center gap-4\">
+            <Brain className=\"w-8 h-8 text-cyan-400\" />
+            <h1 className=\"text-2xl font-bold tracking-tighter uppercase text-cyan-400\" style={{ fontFamily: 'Space Mono, monospace' }}>
+              MedTrust AI
+            </h1>
+          </div>
+          
+          <div className=\"flex items-center gap-6\">
+            <div className=\"flex items-center gap-2 px-4 py-2 bg-black/40 border border-violet-400/30 rounded-sm\">
+              <User className=\"w-4 h-4 text-violet-400\" />
+              <span className=\"text-sm text-white/80\">{user?.name}</span>
+              <span className=\"text-xs text-violet-400 uppercase ml-2\">({user?.role})</span>
+            </div>
+            <button
+              data-testid=\"logout-button\"
+              onClick={logout}
+              className=\"flex items-center gap-2 px-4 py-2 bg-black border border-red-400/40 text-red-400 rounded-sm hover:bg-red-400 hover:text-black transition-all\"
+            >
+              <LogOut className=\"w-4 h-4\" />
+              LOGOUT
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className=\"relative z-10 border-b border-cyan-400/10 bg-black/20 backdrop-blur-sm\">
+        <div className=\"max-w-7xl mx-auto px-6\">
+          <div className=\"flex gap-1 overflow-x-auto\">
+            {[
+              { id: \"network\", label: \"Live Network\", icon: Network },
+              { id: \"training\", label: \"Training\", icon: Play },
+              { id: \"privacy\", label: \"Privacy Lab\", icon: Shield },
+              { id: \"attack\", label: \"Attack Sim\", icon: AlertTriangle },
+              { id: \"xai\", label: \"XAI Panel\", icon: Eye },
+              { id: \"sovereignty\", label: \"Data Map\", icon: Map },
+              { id: \"chat\", label: \"AI Chat\", icon: MessageSquare },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                data-testid={`tab-${tab.id}`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-3 text-sm uppercase tracking-wider transition-all ${
+                  activeTab === tab.id
+                    ? \"bg-cyan-400/10 border-b-2 border-cyan-400 text-cyan-400\"
+                    : \"text-white/60 hover:text-white/90 hover:bg-white/5\"
+                }`}
+              >
+                <tab.icon className=\"w-4 h-4\" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className=\"relative z-10 max-w-7xl mx-auto px-6 py-8\">
+        <AnimatePresence mode=\"wait\">
+          {activeTab === \"network\" && (
+            <motion.div
+              key=\"network\"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-testid=\"network-panel\"
+            >
+              <div className=\"backdrop-blur-xl bg-black/60 border border-cyan-400/20 rounded-sm p-8\">
+                <h2 className=\"text-2xl uppercase tracking-tight text-cyan-400 mb-6\" style={{ fontFamily: 'Space Mono, monospace' }}>
+                  Federated Learning Network
+                </h2>
+                
+                <div className=\"relative h-[500px] border border-cyan-400/10 bg-black/40 rounded-sm overflow-hidden\">
+                  <svg width=\"100%\" height=\"100%\" viewBox=\"0 0 800 500\">
+                    {/* Central Brain Node */}
+                    <motion.g
+                      animate={isTraining ? { scale: [1, 1.1, 1] } : {}}
+                      transition={{ repeat: Infinity, duration: 2 }}
+                    >
+                      <circle cx=\"400\" cy=\"250\" r=\"40\" fill=\"#00f5ff\" opacity=\"0.2\" data-testid=\"central-brain-node\" />
+                      <circle cx=\"400\" cy=\"250\" r=\"30\" fill=\"none\" stroke=\"#00f5ff\" strokeWidth=\"2\" />
+                      <text x=\"400\" y=\"255\" textAnchor=\"middle\" fill=\"#00f5ff\" fontSize=\"12\" fontFamily=\"Space Mono\">
+                        BRAIN
+                      </text>
+                    </motion.g>
+
+                    {/* Hospital Nodes */}
+                    {hospitals.map((hospital, idx) => (
+                      <g key={hospital.id}>
+                        {/* Connection lines */}
+                        <line
+                          x1={hospital.x}
+                          y1={hospital.y}
+                          x2=\"400\"
+                          y2=\"250\"
+                          stroke=\"#a78bfa\"
+                          strokeWidth=\"1\"
+                          opacity=\"0.3\"
+                        />
+                        
+                        {/* Hospital node */}
+                        <motion.g
+                          animate={isTraining ? { scale: [1, 1.15, 1] } : {}}
+                          transition={{ repeat: Infinity, duration: 2, delay: idx * 0.3 }}
+                        >
+                          <circle cx={hospital.x} cy={hospital.y} r=\"25\" fill=\"#a78bfa\" opacity=\"0.2\" />
+                          <circle cx={hospital.x} cy={hospital.y} r=\"15\" fill=\"none\" stroke=\"#a78bfa\" strokeWidth=\"2\" />
+                          <text
+                            x={hospital.x}
+                            y={hospital.y - 30}
+                            textAnchor=\"middle\"
+                            fill=\"#a78bfa\"
+                            fontSize=\"11\"
+                            fontFamily=\"IBM Plex Mono\"
+                          >
+                            {hospital.name}
+                          </text>
+                          <text
+                            x={hospital.x}
+                            y={hospital.y + 35}
+                            textAnchor=\"middle\"
+                            fill=\"#ffffff\"
+                            fontSize=\"9\"
+                            opacity=\"0.6\"
+                            fontFamily=\"IBM Plex Mono\"
+                          >
+                            {hospital.law}
+                          </text>
+                        </motion.g>
+
+                        {/* Animated particles when training */}
+                        {isTraining && (
+                          <motion.circle
+                            cx={hospital.x}
+                            cy={hospital.y}
+                            r=\"3\"
+                            fill=\"#00f5ff\"
+                            animate={{
+                              cx: [hospital.x, 400, hospital.x],
+                              cy: [hospital.y, 250, hospital.y],
+                            }}
+                            transition={{
+                              repeat: Infinity,
+                              duration: 3,
+                              delay: idx * 0.5,
+                              ease: \"linear\"
+                            }}
+                          />
+                        )}
+                      </g>
+                    ))}
+                  </svg>
+                  
+                  <div className=\"absolute bottom-4 left-4 text-xs text-white/60\">
+                    <p>● Data particles flowing hospital → aggregator → hospital</p>
+                    <p className=\"mt-1\">● Zero raw data leaves institution boundaries</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === \"training\" && (
+            <motion.div
+              key=\"training\"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-testid=\"training-panel\"
+            >
+              <div className=\"grid grid-cols-1 lg:grid-cols-2 gap-6\">
+                {/* Training Control */}
+                <div className=\"backdrop-blur-xl bg-black/60 border border-cyan-400/20 rounded-sm p-6\">
+                  <h2 className=\"text-xl uppercase tracking-tight text-cyan-400 mb-4\">
+                    Training Simulation
+                  </h2>
+                  
+                  <div className=\"space-y-4 mb-6\">
+                    <div className=\"flex justify-between text-sm\">
+                      <span className=\"text-white/60\">Current Round:</span>
+                      <span className=\"text-cyan-400 font-bold\">{trainingRound}</span>
+                    </div>
+                    <div className=\"flex justify-between text-sm\">
+                      <span className=\"text-white/60\">Global Accuracy:</span>
+                      <span className=\"text-cyan-400 font-bold\">{accuracy.toFixed(1)}%</span>
+                    </div>
+                    <div className=\"flex justify-between text-sm\">
+                      <span className=\"text-white/60\">Status:</span>
+                      <span className={isTraining ? \"text-green-400\" : \"text-violet-400\"}>
+                        {isTraining ? \"● TRAINING\" : \"○ IDLE\"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    data-testid=\"start-training-button\"
+                    onClick={startTraining}
+                    disabled={isTraining}
+                    className=\"w-full bg-black border border-cyan-400 text-cyan-400 py-3 rounded-sm uppercase tracking-widest hover:bg-cyan-400 hover:text-black transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2\"
+                  >
+                    {isTraining ? <Pause className=\"w-4 h-4\" /> : <Play className=\"w-4 h-4\" />}
+                    {isTraining ? \"TRAINING...\" : \"START TRAINING\"}
+                  </button>
+
+                  {/* Accuracy Chart */}
+                  {trainingData.length > 0 && (
+                    <div className=\"mt-6 h-48\">
+                      <ResponsiveContainer width=\"100%\" height=\"100%\">
+                        <AreaChart data={trainingData}>
+                          <defs>
+                            <linearGradient id=\"accuracyGradient\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">
+                              <stop offset=\"0%\" stopColor=\"#00f5ff\" stopOpacity={0.4} />
+                              <stop offset=\"100%\" stopColor=\"#a78bfa\" stopOpacity={0.1} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray=\"3 3\" stroke=\"rgba(255,255,255,0.1)\" />
+                          <XAxis dataKey=\"round\" stroke=\"#ffffff40\" style={{ fontSize: '10px' }} />
+                          <YAxis stroke=\"#ffffff40\" style={{ fontSize: '10px' }} domain={[40, 100]} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: '#000', border: '1px solid #00f5ff40' }}
+                            labelStyle={{ color: '#00f5ff' }}
+                          />
+                          <Area type=\"monotone\" dataKey=\"accuracy\" stroke=\"#00f5ff\" fill=\"url(#accuracyGradient)\" strokeWidth={2} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                {/* Blockchain Audit Log */}
+                <div className=\"backdrop-blur-xl bg-black/60 border border-violet-400/20 rounded-sm p-6\">
+                  <h2 className=\"text-xl uppercase tracking-tight text-violet-400 mb-4\">
+                    Blockchain Audit Trail
+                  </h2>
+                  
+                  <div className=\"h-[400px] overflow-hidden border border-violet-400/20 bg-black/40 rounded-sm\">
+                    {auditLogs.length > 0 ? (
+                      <Marquee gradient={false} speed={30} direction=\"up\" pauseOnHover>
+                        {auditLogs.map((log) => (
+                          <div key={log.id} className=\"px-4 py-3 border-b border-white/5\">
+                            <p className=\"text-xs text-cyan-400 font-mono mb-1\">[{log.timestamp}]</p>
+                            <p className=\"text-sm text-white/80\">{log.message}</p>
+                          </div>
+                        ))}
+                      </Marquee>
+                    ) : (
+                      <div className=\"flex items-center justify-center h-full text-white/40 text-sm\">
+                        No audit logs yet. Start training to see activity.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === \"privacy\" && (
+            <motion.div
+              key=\"privacy\"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-testid=\"privacy-panel\"
+            >
+              <div className=\"backdrop-blur-xl bg-black/60 border border-violet-400/20 rounded-sm p-8\">
+                <h2 className=\"text-2xl uppercase tracking-tight text-violet-400 mb-6\">
+                  Privacy Lab - Differential Privacy Tuning
+                </h2>
+
+                {/* Epsilon Slider */}
+                <div className=\"mb-8\">
+                  <div className=\"flex justify-between items-center mb-4\">
+                    <label className=\"text-sm uppercase tracking-wider text-cyan-400\">
+                      Privacy Budget (ε)
+                    </label>
+                    <span className=\"text-2xl font-bold text-cyan-400\">{privacyLevel}</span>
+                  </div>
+                  <input
+                    data-testid=\"privacy-slider\"
+                    type=\"range\"
+                    min=\"0\"
+                    max=\"100\"
+                    value={privacyLevel}
+                    onChange={(e) => setPrivacyLevel(Number(e.target.value))}
+                    className=\"w-full h-2 bg-black/40 rounded-lg appearance-none cursor-pointer\"
+                    style={{
+                      background: `linear-gradient(to right, #00f5ff ${privacyLevel}%, rgba(255,255,255,0.1) ${privacyLevel}%)`
+                    }}
+                  />
+                  <div className=\"flex justify-between text-xs text-white/40 mt-2\">
+                    <span>High Privacy</span>
+                    <span>Low Privacy</span>
+                  </div>
+                </div>
+
+                {/* Metrics Grid */}
+                <div className=\"grid grid-cols-2 md:grid-cols-4 gap-4 mb-8\">
+                  {[
+                    { label: \"Model Accuracy\", value: metrics.accuracy.toFixed(1), color: \"cyan\", unit: \"%\" },
+                    { label: \"Privacy Guarantee\", value: metrics.privacy, color: \"green\", unit: \"\" },
+                    { label: \"Leakage Risk\", value: metrics.leakage.toFixed(1), color: \"red\", unit: \"%\" },
+                    { label: \"Compliance Score\", value: metrics.compliance.toFixed(0), color: \"violet\", unit: \"\" },
+                  ].map((metric, idx) => (
+                    <div key={idx} className={`backdrop-blur-md bg-black/40 border border-${metric.color}-400/30 rounded-sm p-4`}>
+                      <p className={`text-xs uppercase tracking-wider text-${metric.color}-400 mb-2`}>
+                        {metric.label}
+                      </p>
+                      <p className={`text-3xl font-bold text-${metric.color}-400`}>
+                        {metric.value}{metric.unit}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Tradeoff Chart */}
+                <div className=\"h-64\">
+                  <ResponsiveContainer width=\"100%\" height=\"100%\">
+                    <LineChart
+                      data={Array.from({ length: 11 }, (_, i) => {
+                        const eps = i * 10;
+                        return {
+                          epsilon: eps,
+                          accuracy: Math.max(50, 95 - (100 - eps) * 0.3),
+                          privacy: eps,
+                        };
+                      })}
+                    >
+                      <CartesianGrid strokeDasharray=\"3 3\" stroke=\"rgba(255,255,255,0.1)\" />
+                      <XAxis dataKey=\"epsilon\" stroke=\"#ffffff40\" label={{ value: 'Privacy Budget (ε)', position: 'bottom', fill: '#fff', opacity: 0.6 }} />
+                      <YAxis stroke=\"#ffffff40\" />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#000', border: '1px solid #00f5ff40' }}
+                      />
+                      <Legend />
+                      <Line type=\"monotone\" dataKey=\"accuracy\" stroke=\"#00f5ff\" strokeWidth={2} name=\"Accuracy %\" />
+                      <Line type=\"monotone\" dataKey=\"privacy\" stroke=\"#22c55e\" strokeWidth={2} name=\"Privacy Level\" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === \"attack\" && (
+            <motion.div
+              key=\"attack\"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-testid=\"attack-panel\"
+            >
+              <div className=\"backdrop-blur-xl bg-black/60 border border-red-400/20 rounded-sm p-8\">
+                <div className=\"flex items-center justify-between mb-6\">
+                  <h2 className=\"text-2xl uppercase tracking-tight text-red-400\">
+                    Attack Simulation - Model Inversion
+                  </h2>
+                  
+                  <div className=\"flex items-center gap-4\">
+                    <label className=\"flex items-center gap-2 cursor-pointer\">
+                      <span className=\"text-sm uppercase tracking-wider text-white/60\">Privacy Protection:</span>
+                      <button
+                        data-testid=\"privacy-toggle\"
+                        onClick={() => setPrivacyEnabled(!privacyEnabled)}
+                        className={`relative w-14 h-7 rounded-full transition-all ${
+                          privacyEnabled ? 'bg-green-500' : 'bg-red-500'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                            privacyEnabled ? 'translate-x-7' : ''
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-sm font-bold ${privacyEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                        {privacyEnabled ? 'ON' : 'OFF'}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className=\"grid grid-cols-1 lg:grid-cols-2 gap-6\">
+                  {/* Without Privacy */}
+                  <div className=\"backdrop-blur-md bg-black/40 border border-red-400/30 rounded-sm p-6\">
+                    <h3 className=\"text-lg uppercase tracking-wider text-red-400 mb-4 flex items-center gap-2\">
+                      <AlertTriangle className=\"w-5 h-5\" />
+                      Without Privacy ({privacyEnabled ? 'Blocked' : 'Active'})
+                    </h3>
+                    
+                    <ResponsiveContainer width=\"100%\" height={300}>
+                      <BarChart data={privacyEnabled ? [] : getAttackData()} layout=\"vertical\">
+                        <CartesianGrid strokeDasharray=\"3 3\" stroke=\"rgba(255,255,255,0.1)\" />
+                        <XAxis type=\"number\" stroke=\"#ffffff40\" domain={[0, 100]} />
+                        <YAxis type=\"category\" dataKey=\"feature\" stroke=\"#ffffff40\" width={100} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#000', border: '1px solid #ef444440' }}
+                        />
+                        <Bar dataKey=\"reconstruction\" fill=\"#ef4444\" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    
+                    {!privacyEnabled && (
+                      <p className=\"text-sm text-red-400 mt-4 text-center\">
+                        ⚠️ 90%+ feature reconstruction - Patient data at risk!
+                      </p>
+                    )}
+                  </div>
+
+                  {/* With Privacy */}
+                  <div className=\"backdrop-blur-md bg-black/40 border border-green-400/30 rounded-sm p-6\">
+                    <h3 className=\"text-lg uppercase tracking-wider text-green-400 mb-4 flex items-center gap-2\">
+                      <Shield className=\"w-5 h-5\" />
+                      With Privacy ({privacyEnabled ? 'Active' : 'Disabled'})
+                    </h3>
+                    
+                    <ResponsiveContainer width=\"100%\" height={300}>
+                      <BarChart data={privacyEnabled ? getAttackData() : []} layout=\"vertical\">
+                        <CartesianGrid strokeDasharray=\"3 3\" stroke=\"rgba(255,255,255,0.1)\" />
+                        <XAxis type=\"number\" stroke=\"#ffffff40\" domain={[0, 100]} />
+                        <YAxis type=\"category\" dataKey=\"feature\" stroke=\"#ffffff40\" width={100} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#000', border: '1px solid #22c55e40' }}
+                        />
+                        <Bar dataKey=\"reconstruction\" fill=\"#22c55e\" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    
+                    {privacyEnabled && (
+                      <p className=\"text-sm text-green-400 mt-4 text-center\">
+                        ✅ &lt;12% reconstruction - Attack successfully blocked!
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className=\"mt-6 p-4 bg-cyan-400/10 border border-cyan-400/30 rounded-sm\">
+                  <p className=\"text-sm text-cyan-400 text-center\">
+                    <Zap className=\"inline w-4 h-4 mr-2\" />
+                    Toggle privacy protection to see real-time attack mitigation
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === \"xai\" && (
+            <motion.div
+              key=\"xai\"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-testid=\"xai-panel\"
+            >
+              <div className=\"backdrop-blur-xl bg-black/60 border border-violet-400/20 rounded-sm p-8\">
+                <h2 className=\"text-2xl uppercase tracking-tight text-violet-400 mb-6\">
+                  Explainable AI - Model Interpretation
+                </h2>
+
+                <div className=\"grid grid-cols-1 lg:grid-cols-2 gap-6\">
+                  {/* Patient Card */}
+                  <div className=\"backdrop-blur-md bg-black/40 border border-cyan-400/30 rounded-sm p-6\">
+                    <h3 className=\"text-lg uppercase tracking-wider text-cyan-400 mb-4\">
+                      Anonymized Patient Data
+                    </h3>
+                    
+                    <div className=\"flex items-center gap-4 mb-6\">
+                      <img
+                        src=\"https://static.prod-images.emergentagent.com/jobs/05173416-50ae-43a7-b7d2-cde83355be80/images/31264bbbdc25cf7ff8b8a01dca5cb1e95f0c14818ca6ba4870fad85b2a103bd6.png\"
+                        alt=\"Patient Avatar\"
+                        className=\"w-20 h-20 rounded-full border-2 border-cyan-400\"
+                      />
+                      <div>
+                        <p className=\"text-lg text-cyan-400 font-bold\">Patient #7492</p>
+                        <p className=\"text-sm text-white/60\">Diabetes Risk Prediction</p>
+                      </div>
+                    </div>
+
+                    <div className=\"space-y-3 text-sm\">
+                      {[
+                        { label: \"Age\", value: \"52 years\" },
+                        { label: \"BMI\", value: \"31.4\" },
+                        { label: \"Glucose\", value: \"148 mg/dL\" },
+                        { label: \"Blood Pressure\", value: \"88 mmHg\" },
+                        { label: \"Cholesterol\", value: \"220 mg/dL\" },
+                      ].map((item, idx) => (
+                        <div key={idx} className=\"flex justify-between\">
+                          <span className=\"text-white/60\">{item.label}:</span>
+                          <span className=\"text-cyan-400 font-mono\">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* SHAP Values */}
+                  <div className=\"backdrop-blur-md bg-black/40 border border-violet-400/30 rounded-sm p-6\">
+                    <h3 className=\"text-lg uppercase tracking-wider text-violet-400 mb-4\">
+                      Feature Importance (SHAP)
+                    </h3>
+                    
+                    <div className=\"space-y-4\">
+                      {[
+                        { feature: \"Glucose\", importance: 85 },
+                        { feature: \"BMI\", importance: 72 },
+                        { feature: \"Age\", importance: 58 },
+                        { feature: \"Blood Pressure\", importance: 45 },
+                        { feature: \"Cholesterol\", importance: 38 },
+                      ].map((item, idx) => (
+                        <div key={idx}>
+                          <div className=\"flex justify-between text-sm mb-1\">
+                            <span className=\"text-white/80\">{item.feature}</span>
+                            <span className=\"text-violet-400 font-bold\">{item.importance}%</span>
+                          </div>
+                          <div className=\"h-3 bg-black/40 rounded-full overflow-hidden\">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${item.importance}%` }}
+                              transition={{ duration: 1, delay: idx * 0.1 }}
+                              className=\"h-full bg-gradient-to-r from-violet-500 to-cyan-500\"
+                              style={{
+                                boxShadow: '0 0 10px rgba(167, 139, 250, 0.5)'
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Decision Path */}
+                <div className=\"mt-6 backdrop-blur-md bg-black/40 border border-cyan-400/30 rounded-sm p-6\">
+                  <h3 className=\"text-lg uppercase tracking-wider text-cyan-400 mb-4\">
+                    5-Step Decision Path
+                  </h3>
+                  
+                  <div className=\"flex items-center justify-between gap-4\">
+                    {[
+                      { step: 1, label: \"Data Input\", color: \"cyan\" },
+                      { step: 2, label: \"Feature Extraction\", color: \"violet\" },
+                      { step: 3, label: \"Model Inference\", color: \"cyan\" },
+                      { step: 4, label: \"Risk Assessment\", color: \"yellow\" },
+                      { step: 5, label: \"Prediction\", color: \"red\" },
+                    ].map((node, idx) => (
+                      <React.Fragment key={node.step}>
+                        <div className=\"flex flex-col items-center\">
+                          <div className={`w-12 h-12 rounded-full bg-${node.color}-500/20 border-2 border-${node.color}-400 flex items-center justify-center text-${node.color}-400 font-bold`}>
+                            {node.step}
+                          </div>
+                          <p className={`text-xs mt-2 text-${node.color}-400 text-center`}>
+                            {node.label}
+                          </p>
+                        </div>
+                        {idx < 4 && (
+                          <div className=\"flex-1 h-0.5 bg-gradient-to-r from-cyan-400 to-violet-400 opacity-40\" />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === \"sovereignty\" && (
+            <motion.div
+              key=\"sovereignty\"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-testid=\"sovereignty-panel\"
+            >
+              <div className=\"backdrop-blur-xl bg-black/60 border border-green-400/20 rounded-sm p-8\">
+                <h2 className=\"text-2xl uppercase tracking-tight text-green-400 mb-6\">
+                  Data Sovereignty Map
+                </h2>
+
+                <div className=\"relative h-[500px] border border-green-400/10 bg-black/40 rounded-sm overflow-hidden\">
+                  <ComposableMap
+                    projection=\"geoMercator\"
+                    projectionConfig={{
+                      scale: 130,
+                    }}
+                  >
+                    <Geographies geography={geoUrl}>
+                      {({ geographies }) =>
+                        geographies.map((geo) => (
+                          <Geography
+                            key={geo.rsmKey}
+                            geography={geo}
+                            fill=\"rgba(255, 255, 255, 0.05)\"
+                            stroke=\"rgba(0, 245, 255, 0.2)\"
+                            strokeWidth={0.5}
+                          />
+                        ))
+                      }
+                    </Geographies>
+                    
+                    {worldMarkers.map((marker, idx) => (
+                      <Marker key={idx} coordinates={marker.coordinates}>
+                        <circle r={8} fill=\"#22c55e\" opacity={0.8} />
+                        <circle r={12} fill=\"none\" stroke=\"#22c55e\" strokeWidth={2} opacity={0.5}>
+                          <animate
+                            attributeName=\"r\"
+                            from=\"12\"
+                            to=\"20\"
+                            dur=\"2s\"
+                            begin=\"0s\"
+                            repeatCount=\"indefinite\"
+                          />
+                          <animate
+                            attributeName=\"opacity\"
+                            from=\"0.5\"
+                            to=\"0\"
+                            dur=\"2s\"
+                            begin=\"0s\"
+                            repeatCount=\"indefinite\"
+                          />
+                        </circle>
+                        <text
+                          y={-15}
+                          textAnchor=\"middle\"
+                          fill=\"#22c55e\"
+                          fontSize={10}
+                          fontFamily=\"IBM Plex Mono\"
+                        >
+                          {marker.name}
+                        </text>
+                        <text
+                          y={25}
+                          textAnchor=\"middle\"
+                          fill=\"#00f5ff\"
+                          fontSize={9}
+                          fontFamily=\"IBM Plex Mono\"
+                        >
+                          [{marker.law}]
+                        </text>
+                      </Marker>
+                    ))}
+                  </ComposableMap>
+                  
+                  <div className=\"absolute bottom-4 left-4 backdrop-blur-md bg-black/60 border border-green-400/30 rounded-sm p-4\">
+                    <p className=\"text-sm text-green-400 font-bold mb-2\">
+                      🔒 Data Sovereignty Guarantee
+                    </p>
+                    <p className=\"text-xs text-white/60\">
+                      • All data remains within national borders<br/>
+                      • Full compliance with local regulations<br/>
+                      • Federated learning = Zero data transfer
+                    </p>
+                  </div>
+
+                  <div className=\"absolute top-4 right-4 space-y-2\">
+                    {[\"GDPR\", \"HIPAA\", \"PDPB\", \"LGPD\"].map((law) => (
+                      <div key={law} className=\"backdrop-blur-md bg-black/60 border border-cyan-400/30 rounded-sm px-3 py-1\">
+                        <span className=\"text-xs text-cyan-400 font-mono\">{law}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === \"chat\" && (
+            <motion.div
+              key=\"chat\"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              data-testid=\"chat-panel\"
+            >
+              <div className=\"backdrop-blur-xl bg-black/60 border border-violet-400/20 rounded-sm p-6 h-[600px] flex flex-col\">
+                <h2 className=\"text-2xl uppercase tracking-tight text-violet-400 mb-4\">
+                  AI Assistant - Claude Sonnet 4.5
+                </h2>
+
+                {/* Chat Messages */}
+                <div className=\"flex-1 overflow-y-auto mb-4 space-y-3 border border-violet-400/10 bg-black/40 rounded-sm p-4\">
+                  {chatMessages.length === 0 && (
+                    <div className=\"text-center text-white/40 text-sm py-8\">
+                      Ask me anything about federated learning, privacy, or the simulation...
+                    </div>
+                  )}
+                  
+                  {chatMessages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-sm ${
+                        msg.role === \"user\"
+                          ? \"bg-cyan-500/10 border border-cyan-400/30 ml-8\"
+                          : msg.role === \"system\"
+                          ? \"bg-violet-500/10 border border-violet-400/30\"
+                          : \"bg-black/40 border border-white/10 mr-8\"
+                      }`}
+                    >
+                      <p className={`text-xs uppercase tracking-wider mb-1 ${
+                        msg.role === \"user\" ? \"text-cyan-400\" : msg.role === \"system\" ? \"text-violet-400\" : \"text-white/60\"
+                      }`}>
+                        {msg.role === \"user\" ? \"You\" : msg.role === \"system\" ? \"System\" : \"AI Assistant\"}
+                      </p>
+                      <p className=\"text-sm text-white/90\">{msg.content}</p>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Chat Input */}
+                <div className=\"flex gap-2\">
+                  <input
+                    data-testid=\"chat-input\"
+                    type=\"text\"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyPress={(e) => e.key === \"Enter\" && sendChatMessage()}
+                    placeholder=\"Type your question...\"
+                    className=\"flex-1 bg-black/40 border border-cyan-400/30 text-white px-4 py-3 rounded-sm focus:outline-none focus:border-cyan-400 transition-all\"
+                    style={{ fontFamily: 'IBM Plex Mono, monospace' }}
+                  />
+                  <button
+                    data-testid=\"chat-send-button\"
+                    onClick={sendChatMessage}
+                    className=\"bg-black border border-cyan-400 text-cyan-400 px-6 py-3 rounded-sm uppercase tracking-widest hover:bg-cyan-400 hover:text-black transition-all duration-200\"
+                  >
+                    SEND
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+"
+Observation: Create successful: /app/frontend/src/pages/DashboardPage.js
