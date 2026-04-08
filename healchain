@@ -1,0 +1,10 @@
+Now let me create the complete backend with auth and simulation APIs:
+Action: file_editor create /app/backend/.env --file-text "MONGO_URL=\"mongodb://localhost:27017\"
+DB_NAME=\"medtrust_ai\"
+CORS_ORIGINS=\"*\"
+JWT_SECRET=\"8f9a2b4c6e1d3f5a7c9b0e2d4f6a8c0e1f3a5c7e9b1d3f5a7c9e0b2d4f6a8c0e\"
+ADMIN_EMAIL=\"admin@medtrust.ai\"
+ADMIN_PASSWORD=\"admin123\"
+EMERGENT_LLM_KEY=\"sk-emergent-b4fEd5d988a8cEf1fE\"
+"
+Observation: Overwrite successful: /app/backend/.env
