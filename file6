@@ -1,0 +1,8 @@
+Great! Auth is working. I notice the /me endpoint is returning `_id` which should be cleaned. Let me fix that quickly:
+Action: file_editor str_replace /app/backend/server.py --old-str "@api_router.get(\"/auth/me\")
+async def get_me(user: dict = Depends(get_current_user)):
+    return user" --new-str "@api_router.get(\"/auth/me\")
+async def get_me(user: dict = Depends(get_current_user)):
+    user.pop(\"_id\", None)
+    return user"
+Observation: Edit was successful.
